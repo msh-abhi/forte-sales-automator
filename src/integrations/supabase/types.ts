@@ -14,7 +14,179 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      communication_history: {
+        Row: {
+          communication_type: string
+          content: string
+          direction: string
+          external_id: string | null
+          id: string
+          lead_id: string
+          metadata: Json | null
+          sent_at: string
+          subject: string | null
+        }
+        Insert: {
+          communication_type: string
+          content: string
+          direction: string
+          external_id?: string | null
+          id?: string
+          lead_id: string
+          metadata?: Json | null
+          sent_at?: string
+          subject?: string | null
+        }
+        Update: {
+          communication_type?: string
+          content?: string
+          direction?: string
+          external_id?: string | null
+          id?: string
+          lead_id?: string
+          metadata?: Json | null
+          sent_at?: string
+          subject?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "communication_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          created_at: string
+          director_email: string
+          director_first_name: string
+          director_last_name: string
+          director_phone_number: string | null
+          discount_rate_dr: number | null
+          early_bird_deadline: string | null
+          ensemble_program_name: string | null
+          estimated_performers: number | null
+          follow_up_count: number
+          form_submission_date: string
+          id: string
+          invoice_status: string | null
+          last_communication_date: string | null
+          last_email_sent_type: string | null
+          last_reply_content: string | null
+          last_sms_sent_type: string | null
+          payment_date: string | null
+          quickbooks_customer_id: string | null
+          quote_sent_date: string | null
+          raw_submission_data: Json | null
+          reply_detected: boolean
+          savings: number | null
+          school_name: string | null
+          season: string | null
+          standard_rate_sr: number | null
+          status: string
+          updated_at: string
+          workout_program_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          director_email: string
+          director_first_name: string
+          director_last_name: string
+          director_phone_number?: string | null
+          discount_rate_dr?: number | null
+          early_bird_deadline?: string | null
+          ensemble_program_name?: string | null
+          estimated_performers?: number | null
+          follow_up_count?: number
+          form_submission_date?: string
+          id?: string
+          invoice_status?: string | null
+          last_communication_date?: string | null
+          last_email_sent_type?: string | null
+          last_reply_content?: string | null
+          last_sms_sent_type?: string | null
+          payment_date?: string | null
+          quickbooks_customer_id?: string | null
+          quote_sent_date?: string | null
+          raw_submission_data?: Json | null
+          reply_detected?: boolean
+          savings?: number | null
+          school_name?: string | null
+          season?: string | null
+          standard_rate_sr?: number | null
+          status?: string
+          updated_at?: string
+          workout_program_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          director_email?: string
+          director_first_name?: string
+          director_last_name?: string
+          director_phone_number?: string | null
+          discount_rate_dr?: number | null
+          early_bird_deadline?: string | null
+          ensemble_program_name?: string | null
+          estimated_performers?: number | null
+          follow_up_count?: number
+          form_submission_date?: string
+          id?: string
+          invoice_status?: string | null
+          last_communication_date?: string | null
+          last_email_sent_type?: string | null
+          last_reply_content?: string | null
+          last_sms_sent_type?: string | null
+          payment_date?: string | null
+          quickbooks_customer_id?: string | null
+          quote_sent_date?: string | null
+          raw_submission_data?: Json | null
+          reply_detected?: boolean
+          savings?: number | null
+          school_name?: string | null
+          season?: string | null
+          standard_rate_sr?: number | null
+          status?: string
+          updated_at?: string
+          workout_program_name?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          first_name: string | null
+          id: string
+          last_name: string | null
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          role?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
