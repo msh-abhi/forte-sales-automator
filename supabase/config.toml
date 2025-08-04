@@ -1,1 +1,19 @@
 project_id = "izcvyxcjbgeqxtjvjasq"
+
+[functions.send-email]
+verify_jwt = false
+
+[functions.ai-email-generator]
+verify_jwt = false
+
+[functions.lead-automation]
+verify_jwt = false
+
+[functions.webhook-dispatcher]
+verify_jwt = false
+
+[functions.n8n-trigger]
+verify_jwt = false
+
+[functions.data-sync]
+verify_jwt = false

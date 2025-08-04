@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LogOut, Search, Plus, Eye } from 'lucide-react';
+import { LogOut, Search, Plus, Eye, Mail, Zap, Settings, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface Lead {
@@ -212,9 +212,25 @@ const Dashboard = () => {
                   <SelectItem value="Converted - Paid">Converted - Paid</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={() => navigate('/leads/new')}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Lead
+              <Button onClick={() => navigate('/new-lead')}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Lead
+              </Button>
+              <Button onClick={() => navigate('/email-composer')} variant="outline">
+                <Mail className="h-4 w-4 mr-2" />
+                Compose Email
+              </Button>
+              <Button onClick={() => navigate('/automation')} variant="outline">
+                <Zap className="h-4 w-4 mr-2" />
+                Automation
+              </Button>
+              <Button onClick={() => navigate('/integrations')} variant="outline">
+                <Settings className="h-4 w-4 mr-2" />
+                Integrations
+              </Button>
+              <Button onClick={() => navigate('/reports')} variant="outline">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Reports
               </Button>
             </div>
 
@@ -257,7 +273,7 @@ const Dashboard = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => navigate(`/leads/${lead.id}`)}
+                          onClick={() => navigate(`/lead/${lead.id}`)}
                         >
                           <Eye className="h-4 w-4" />
                         </Button>

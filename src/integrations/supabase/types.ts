@@ -154,6 +154,48 @@ export type Database = {
         }
         Relationships: []
       }
+      n8n_workflows: {
+        Row: {
+          actions: string[] | null
+          created_at: string
+          description: string | null
+          id: string
+          last_run: string | null
+          name: string
+          status: string
+          triggers: string[] | null
+          updated_at: string
+          webhook_url: string | null
+          workflow_id: string
+        }
+        Insert: {
+          actions?: string[] | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          last_run?: string | null
+          name: string
+          status?: string
+          triggers?: string[] | null
+          updated_at?: string
+          webhook_url?: string | null
+          workflow_id: string
+        }
+        Update: {
+          actions?: string[] | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          last_run?: string | null
+          name?: string
+          status?: string
+          triggers?: string[] | null
+          updated_at?: string
+          webhook_url?: string | null
+          workflow_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -184,6 +226,69 @@ export type Database = {
           role?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      webhook_logs: {
+        Row: {
+          event_type: string
+          executed_at: string
+          id: string
+          lead_id: string | null
+          payload: Json | null
+          results: Json | null
+        }
+        Insert: {
+          event_type: string
+          executed_at?: string
+          id?: string
+          lead_id?: string | null
+          payload?: Json | null
+          results?: Json | null
+        }
+        Update: {
+          event_type?: string
+          executed_at?: string
+          id?: string
+          lead_id?: string | null
+          payload?: Json | null
+          results?: Json | null
+        }
+        Relationships: []
+      }
+      zapier_integrations: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          last_triggered: string | null
+          name: string
+          status: string
+          trigger_type: string
+          updated_at: string
+          webhook_url: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          last_triggered?: string | null
+          name: string
+          status?: string
+          trigger_type: string
+          updated_at?: string
+          webhook_url: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          last_triggered?: string | null
+          name?: string
+          status?: string
+          trigger_type?: string
+          updated_at?: string
+          webhook_url?: string
         }
         Relationships: []
       }
