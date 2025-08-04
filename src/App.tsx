@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import LeadDetail from "./pages/LeadDetail";
+import NewLead from "./pages/NewLead";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,6 +39,16 @@ const App = () => (
             <Route path="/" element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/lead/:id" element={
+              <ProtectedRoute>
+                <LeadDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="/new-lead" element={
+              <ProtectedRoute>
+                <NewLead />
               </ProtectedRoute>
             } />
             <Route path="*" element={<NotFound />} />
