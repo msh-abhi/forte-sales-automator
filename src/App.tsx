@@ -8,6 +8,10 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import LeadDetail from "./pages/LeadDetail";
 import NewLead from "./pages/NewLead";
+import EmailComposer from "./components/EmailComposer";
+import AutomationDashboard from "./components/AutomationDashboard";
+import IntegrationHub from "./components/IntegrationHub";
+import ReportsAnalytics from "./components/ReportsAnalytics";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -49,6 +53,26 @@ const App = () => (
             <Route path="/new-lead" element={
               <ProtectedRoute>
                 <NewLead />
+              </ProtectedRoute>
+            } />
+            <Route path="/email-composer" element={
+              <ProtectedRoute>
+                <EmailComposer />
+              </ProtectedRoute>
+            } />
+            <Route path="/automation" element={
+              <ProtectedRoute>
+                <AutomationDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/integrations" element={
+              <ProtectedRoute>
+                <IntegrationHub />
+              </ProtectedRoute>
+            } />
+            <Route path="/reports" element={
+              <ProtectedRoute>
+                <ReportsAnalytics />
               </ProtectedRoute>
             } />
             <Route path="*" element={<NotFound />} />
