@@ -73,29 +73,16 @@ const NewLead = () => {
         savings: savings || null,
         status: formData.status,
         form_submission_date: new Date().toISOString(),
+        source: 'manual_entry',
+        initial_note: formData.notes.trim() || null
       };
 
-      const { data, error } = await supabase
-        .from('leads')
-        .insert(leadData)
-        .select()
-        .single();
+      // Call the webhook lead ingestion function instead of directly inserting
+      const { data, error } = await supabase.functions.invoke('webhook-lead-ingestion', {
+        body: leadData
+      });
 
       if (error) throw error;
-
-      // Add initial note if provided
-      if (formData.notes.trim()) {
-        await supabase
-          .from('communication_history')
-          .insert({
-            lead_id: data.id,
-            communication_type: 'note',
-            direction: 'internal',
-            subject: 'Initial Note',
-            content: formData.notes,
-            sent_at: new Date().toISOString()
-          });
-      }
 
       toast({
         title: "Success",

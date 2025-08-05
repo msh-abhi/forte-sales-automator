@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, Calendar, DollarSign, Users, MessageSquare, Send } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, Calendar, DollarSign, Users, MessageSquare, Send, CreditCard, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -167,6 +167,122 @@ const LeadDetail = () => {
         description: "Failed to add note",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleManualConvert = async () => {
+    if (!lead) return;
+    
+    if (!confirm('Are you sure you want to manually convert this lead to a customer? This will create an invoice in QuickBooks.')) {
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      // Update lead status to trigger QuickBooks conversion
+      const { error } = await supabase
+        .from('leads')
+        .update({ 
+          status: 'Manually Converted',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Call QuickBooks conversion edge function
+      const { data, error: conversionError } = await supabase.functions.invoke('quickbooks-conversion', {
+        body: { 
+          leadId: id,
+          leadData: lead
+        }
+      });
+
+      if (conversionError) throw conversionError;
+
+      setLead({ ...lead, status: 'Invoice Sent' });
+      toast({
+        title: "Success",
+        description: "Lead converted successfully! Invoice has been sent.",
+      });
+      
+      // Refresh data
+      fetchLeadDetails();
+      fetchCommunications();
+    } catch (error) {
+      console.error('Error converting lead:', error);
+      toast({
+        title: "Error",
+        description: "Failed to convert lead. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleResendCommunication = async () => {
+    if (!lead || communications.length === 0) return;
+
+    setUpdating(true);
+    try {
+      // Get the last communication that was sent outbound
+      const lastOutboundComm = communications.find(comm => 
+        comm.direction === 'outbound' && 
+        (comm.communication_type === 'email' || comm.communication_type === 'sms')
+      );
+
+      if (!lastOutboundComm) {
+        toast({
+          title: "No Communication Found",
+          description: "No previous email or SMS to resend.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Resend based on communication type
+      if (lastOutboundComm.communication_type === 'email') {
+        const { error } = await supabase.functions.invoke('send-email', {
+          body: {
+            to: lead.director_email,
+            subject: `Re: ${lastOutboundComm.subject}`,
+            content: lastOutboundComm.content,
+            leadId: id,
+            type: 'manual_resend'
+          }
+        });
+
+        if (error) throw error;
+      } else if (lastOutboundComm.communication_type === 'sms') {
+        const { error } = await supabase.functions.invoke('send-sms', {
+          body: {
+            to: lead.director_phone_number,
+            message: lastOutboundComm.content,
+            leadId: id,
+            type: 'manual_resend'
+          }
+        });
+
+        if (error) throw error;
+      }
+
+      toast({
+        title: "Success",
+        description: `${lastOutboundComm.communication_type.toUpperCase()} resent successfully!`,
+      });
+      
+      // Refresh communications
+      fetchCommunications();
+    } catch (error) {
+      console.error('Error resending communication:', error);
+      toast({
+        title: "Error",
+        description: "Failed to resend communication. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -428,6 +544,24 @@ const LeadDetail = () => {
                 <CardTitle>Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                <Button 
+                  className="w-full" 
+                  variant="default"
+                  onClick={handleManualConvert}
+                  disabled={updating || lead.status === 'Invoice Sent' || lead.status === 'Converted - Paid'}
+                >
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  {updating ? 'Converting...' : 'Manually Convert'}
+                </Button>
+                <Button 
+                  className="w-full" 
+                  variant="outline"
+                  onClick={handleResendCommunication}
+                  disabled={updating || communications.length === 0}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  {updating ? 'Resending...' : 'Resend Last Communication'}
+                </Button>
                 <Button className="w-full" variant="outline">
                   <Phone className="h-4 w-4 mr-2" />
                   Call Lead

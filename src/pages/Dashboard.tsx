@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LogOut, Search, Plus, Eye, Mail, Zap, Settings, BarChart3 } from 'lucide-react';
+import { LogOut, Search, Plus, Eye, Mail, Zap, Settings, BarChart3, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface Lead {
@@ -231,6 +231,10 @@ const Dashboard = () => {
               <Button onClick={() => navigate('/reports')} variant="outline">
                 <BarChart3 className="h-4 w-4 mr-2" />
                 Reports
+              </Button>
+              <Button onClick={() => navigate('/settings/email-templates')} variant="outline">
+                <FileText className="h-4 w-4 mr-2" />
+                Templates
               </Button>
             </div>
 

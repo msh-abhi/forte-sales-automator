@@ -8,6 +8,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import LeadDetail from "./pages/LeadDetail";
 import NewLead from "./pages/NewLead";
+import EmailTemplates from "./pages/EmailTemplates";
 import EmailComposer from "./components/EmailComposer";
 import AutomationDashboard from "./components/AutomationDashboard";
 import IntegrationHub from "./components/IntegrationHub";
@@ -53,6 +54,11 @@ const App = () => (
             <Route path="/new-lead" element={
               <ProtectedRoute>
                 <NewLead />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings/email-templates" element={
+              <ProtectedRoute>
+                <EmailTemplates />
               </ProtectedRoute>
             } />
             <Route path="/email-composer" element={
