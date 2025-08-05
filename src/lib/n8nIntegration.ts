@@ -1,7 +1,7 @@
 // N8N Integration Helper Functions
 // These functions handle communication with n8n workflows
 
-const N8N_BASE_URL = 'https://your-n8n-instance.com'; // Replace with actual n8n URL
+const N8N_BASE_URL = 'https://n8n.tecnomaxx.com'; // Replace with actual n8n URL
 
 export interface N8nWebhookResponse {
   success: boolean;
