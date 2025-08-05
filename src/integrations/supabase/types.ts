@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_models: {
+        Row: {
+          api_endpoint: string | null
+          configuration: Json | null
+          created_at: string
+          id: string
+          is_fallback: boolean
+          is_primary: boolean
+          model_id: string
+          name: string
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          api_endpoint?: string | null
+          configuration?: Json | null
+          created_at?: string
+          id?: string
+          is_fallback?: boolean
+          is_primary?: boolean
+          model_id: string
+          name: string
+          provider: string
+          updated_at?: string
+        }
+        Update: {
+          api_endpoint?: string | null
+          configuration?: Json | null
+          created_at?: string
+          id?: string
+          is_fallback?: boolean
+          is_primary?: boolean
+          model_id?: string
+          name?: string
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       communication_history: {
         Row: {
           communication_type: string
@@ -58,8 +97,45 @@ export type Database = {
           },
         ]
       }
+      follow_up_templates: {
+        Row: {
+          created_at: string
+          email_body: string
+          email_subject: string
+          id: string
+          is_active: boolean
+          name: string
+          sequence_number: number
+          sms_message: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email_body: string
+          email_subject: string
+          id?: string
+          is_active?: boolean
+          name: string
+          sequence_number: number
+          sms_message: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email_body?: string
+          email_subject?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          sequence_number?: number
+          sms_message?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
+          ai_suggested_message: string | null
           created_at: string
           director_email: string
           director_first_name: string
@@ -91,6 +167,7 @@ export type Database = {
           workout_program_name: string | null
         }
         Insert: {
+          ai_suggested_message?: string | null
           created_at?: string
           director_email: string
           director_first_name: string
@@ -122,6 +199,7 @@ export type Database = {
           workout_program_name?: string | null
         }
         Update: {
+          ai_suggested_message?: string | null
           created_at?: string
           director_email?: string
           director_first_name?: string

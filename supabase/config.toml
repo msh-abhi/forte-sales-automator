@@ -6,14 +6,32 @@ verify_jwt = false
 [functions.ai-email-generator]
 verify_jwt = false
 
-[functions.lead-automation]
+[functions.ai-quote-generator]
 verify_jwt = false
 
-[functions.webhook-dispatcher]
+[functions.data-sync]
+verify_jwt = false
+
+[functions.follow-up-automation]
+verify_jwt = false
+
+[functions.lead-automation]
 verify_jwt = false
 
 [functions.n8n-trigger]
 verify_jwt = false
 
-[functions.data-sync]
+[functions.quickbooks-conversion]
+verify_jwt = false
+
+[functions.reply-detection]
+verify_jwt = false
+
+[functions.send-sms]
+verify_jwt = false
+
+[functions.webhook-dispatcher]
+verify_jwt = false
+
+[functions.webhook-lead-ingestion]
 verify_jwt = false
