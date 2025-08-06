@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.webhook-lead-ingestion]
 verify_jwt = false
+
+[functions.quickbooks-oauth]
+verify_jwt = false

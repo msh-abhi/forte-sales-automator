@@ -28,12 +28,43 @@ const serve_handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { action, code, realmId, state }: OAuthRequest = await req.json();
+    let action: string;
+    let code: string | undefined;
+    let realmId: string | undefined;
+    let state: string | undefined;
+
+    if (req.method === 'GET') {
+      // Handle GET requests with query parameters (for initiate action)
+      const url = new URL(req.url);
+      action = url.searchParams.get('action') || '';
+      code = url.searchParams.get('code') || undefined;
+      realmId = url.searchParams.get('realmId') || undefined;
+      state = url.searchParams.get('state') || undefined;
+    } else {
+      // Handle POST requests with JSON body (for callback action)
+      const body = await req.json();
+      action = body.action;
+      code = body.code;
+      realmId = body.realmId;
+      state = body.state;
+    }
 
     if (action === 'initiate') {
       // Generate OAuth URL for QuickBooks
       const authUrl = generateQuickBooksAuthUrl();
       
+      // For GET requests, redirect directly to QuickBooks
+      if (req.method === 'GET') {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            ...corsHeaders,
+            'Location': authUrl
+          }
+        });
+      }
+      
+      // For POST requests, return JSON with the URL
       return new Response(JSON.stringify({
         success: true,
         authUrl
@@ -43,7 +74,11 @@ const serve_handler = async (req: Request): Promise<Response> => {
 
     } else if (action === 'callback') {
       // Handle OAuth callback and exchange code for tokens
-      const tokenData = await exchangeCodeForTokens(code!, realmId!);
+      if (!code || !realmId) {
+        throw new Error('Missing code or realmId in callback');
+      }
+      
+      const tokenData = await exchangeCodeForTokens(code, realmId);
       
       // Store tokens securely (you might want to encrypt these)
       await supabase
@@ -64,6 +99,14 @@ const serve_handler = async (req: Request): Promise<Response> => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'Invalid action'
+    }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
   } catch (error: any) {
     console.error('Error in quickbooks-oauth function:', error);
