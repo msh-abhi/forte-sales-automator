@@ -1,13 +1,10 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.53.0';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const quickbooksClientId = Deno.env.get('QUICKBOOKS_CLIENT_ID');
-const quickbooksClientSecret = Deno.env.get('QUICKBOOKS_CLIENT_SECRET');
-const quickbooksAccessToken = Deno.env.get('QUICKBOOKS_ACCESS_TOKEN');
-const quickbooksRealmId = Deno.env.get('QUICKBOOKS_REALM_ID');
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const corsHeaders = {
@@ -30,22 +27,33 @@ const serve_handler = async (req: Request): Promise<Response> => {
     
     console.log('Converting lead to customer:', leadId);
 
-    if (!quickbooksAccessToken || !quickbooksRealmId) {
-      console.log('QuickBooks credentials not configured, skipping conversion');
+    // Get QuickBooks tokens
+    const { data: tokenData, error: tokenError } = await supabase
+      .from('quickbooks_tokens')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (tokenError || !tokenData) {
+      console.log('QuickBooks not connected, skipping conversion');
       return new Response(JSON.stringify({
         success: false,
-        error: 'QuickBooks credentials not configured'
+        error: 'QuickBooks not connected. Please complete OAuth setup first.'
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    // Check if token is expired and refresh if needed
+    const currentToken = await ensureValidToken(tokenData);
+
     let customerId = leadData.quickbooks_customer_id;
 
     // Create or get customer in QuickBooks
     if (!customerId) {
-      customerId = await createQuickBooksCustomer(leadData);
+      customerId = await createQuickBooksCustomer(leadData, currentToken);
       
       // Update lead with QuickBooks customer ID
       await supabase
@@ -55,7 +63,7 @@ const serve_handler = async (req: Request): Promise<Response> => {
     }
 
     // Create invoice in QuickBooks
-    const invoiceResult = await createQuickBooksInvoice(leadData, customerId);
+    const invoiceResult = await createQuickBooksInvoice(leadData, customerId, currentToken);
 
     // Update lead status
     await supabase
@@ -111,7 +119,65 @@ const serve_handler = async (req: Request): Promise<Response> => {
   }
 };
 
-async function createQuickBooksCustomer(leadData: any): Promise<string> {
+async function ensureValidToken(tokenData: any): Promise<string> {
+  const now = new Date();
+  const expiresAt = new Date(tokenData.expires_at);
+
+  // If token expires within 5 minutes, refresh it
+  if (expiresAt.getTime() - now.getTime() < 5 * 60 * 1000) {
+    console.log('Token expiring soon, refreshing...');
+    return await refreshAccessToken(tokenData);
+  }
+
+  return tokenData.access_token;
+}
+
+async function refreshAccessToken(tokenData: any): Promise<string> {
+  const refreshUrl = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
+  const quickbooksClientId = Deno.env.get('QUICKBOOKS_CLIENT_ID');
+  const quickbooksClientSecret = Deno.env.get('QUICKBOOKS_CLIENT_SECRET');
+  
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: tokenData.refresh_token
+  });
+
+  const response = await fetch(refreshUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${btoa(`${quickbooksClientId}:${quickbooksClientSecret}`)}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json'
+    },
+    body: body.toString()
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to refresh QuickBooks token');
+  }
+
+  const newTokenData = await response.json();
+
+  // Update stored token
+  await supabase
+    .from('quickbooks_tokens')
+    .update({
+      access_token: newTokenData.access_token,
+      refresh_token: newTokenData.refresh_token || tokenData.refresh_token,
+      expires_at: new Date(Date.now() + (newTokenData.expires_in * 1000)).toISOString(),
+    })
+    .eq('realm_id', tokenData.realm_id);
+
+  return newTokenData.access_token;
+}
+
+async function createQuickBooksCustomer(leadData: any, accessToken: string): Promise<string> {
+  const { data: tokenData } = await supabase
+    .from('quickbooks_tokens')
+    .select('realm_id')
+    .limit(1)
+    .single();
+
   const customerData = {
     Name: `${leadData.director_first_name} ${leadData.director_last_name}`,
     CompanyName: leadData.school_name || leadData.ensemble_program_name,
@@ -123,10 +189,10 @@ async function createQuickBooksCustomer(leadData: any): Promise<string> {
     }
   };
 
-  const response = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${quickbooksRealmId}/customer`, {
+  const response = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${tokenData.realm_id}/customer`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${quickbooksAccessToken}`,
+      'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     },
@@ -143,7 +209,13 @@ async function createQuickBooksCustomer(leadData: any): Promise<string> {
   return result.QueryResponse.Customer[0].Id;
 }
 
-async function createQuickBooksInvoice(leadData: any, customerId: string): Promise<any> {
+async function createQuickBooksInvoice(leadData: any, customerId: string, accessToken: string): Promise<any> {
+  const { data: tokenData } = await supabase
+    .from('quickbooks_tokens')
+    .select('realm_id')
+    .limit(1)
+    .single();
+
   const amount = leadData.discount_rate_dr || leadData.standard_rate_sr || 500;
   
   const invoiceData = {
@@ -166,10 +238,10 @@ async function createQuickBooksInvoice(leadData: any, customerId: string): Promi
     TotalAmt: amount
   };
 
-  const response = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${quickbooksRealmId}/invoice`, {
+  const response = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${tokenData.realm_id}/invoice`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${quickbooksAccessToken}`,
+      'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     },

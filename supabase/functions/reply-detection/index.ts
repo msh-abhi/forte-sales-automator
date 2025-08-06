@@ -76,7 +76,7 @@ const serve_handler = async (req: Request): Promise<Response> => {
     // Analyze reply content with AI
     const analysisResult = await analyzeReplyContent(replyContent, lead);
 
-    if (analysisResult.purchaseIntent) {
+    if (analysisResult.purchaseIntent && analysisResult.intentType === 'ready_to_purchase') {
       console.log('Purchase intent detected for lead:', lead.id);
       
       // Trigger QuickBooks customer creation and invoice generation
@@ -89,6 +89,38 @@ const serve_handler = async (req: Request): Promise<Response> => {
         .from('leads')
         .update({
           status: 'Converted - Invoice Sent',
+          ai_suggested_message: analysisResult.suggestedResponse
+        })
+        .eq('id', lead.id);
+
+    } else if (analysisResult.purchaseIntent && analysisResult.intentType === 'negotiating') {
+      console.log('Negotiation detected for lead:', lead.id);
+      
+      // Send negotiation response
+      const emailResponse = await supabase.functions.invoke('send-email', {
+        body: {
+          to: lead.director_email,
+          subject: `Re: ${replySubject || 'Your inquiry'}`,
+          content: analysisResult.suggestedResponse,
+          leadId: lead.id,
+          type: 'negotiation_response'
+        }
+      });
+
+      const smsResponse = await supabase.functions.invoke('send-sms', {
+        body: {
+          to: lead.director_phone_number,
+          message: 'We\'ve replied to your email regarding pricing. Please check your inbox!',
+          leadId: lead.id,
+          type: 'negotiation_notification'
+        }
+      });
+
+      // Update lead status
+      await supabase
+        .from('leads')
+        .update({
+          status: 'Negotiating - Awaiting Response',
           ai_suggested_message: analysisResult.suggestedResponse
         })
         .eq('id', lead.id);
@@ -130,6 +162,7 @@ const serve_handler = async (req: Request): Promise<Response> => {
       success: true,
       leadId: lead.id,
       purchaseIntent: analysisResult.purchaseIntent,
+      intentType: analysisResult.intentType,
       analysisResult
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -157,21 +190,47 @@ async function analyzeReplyContent(replyContent: string, leadData: any): Promise
   const primaryModel = aiModels?.find(m => m.is_primary);
   const fallbackModel = aiModels?.find(m => m.is_fallback);
 
-  // Shorter, more focused prompt to avoid token limits
+  // More nuanced and detailed prompt for better intent classification
   const prompt = `Analyze this customer reply and respond with JSON only:
 
 Customer: ${leadData.director_first_name} ${leadData.director_last_name}
 Reply: "${replyContent}"
 
+Classify the intent more precisely:
+
+READY TO PURCHASE (purchaseIntent: true, intentType: "ready_to_purchase"):
+- Explicitly confirms they want to proceed/buy/move forward
+- Says "yes, let's do it" or "we're ready to order"
+- Asks for payment instructions or how to pay
+- Requests invoice to be sent
+- Confirms purchase details without asking for changes
+
+NEGOTIATING (purchaseIntent: true, intentType: "negotiating"):
+- Asks for discounts, better pricing, or price reductions
+- Wants to modify terms, quantities, or packages
+- Says "can you do better on price?" or similar
+- Interested but needs budget approval
+- Comparing with other vendors
+
+GENERAL INQUIRY (purchaseIntent: false, intentType: "inquiry"):
+- Just asking questions about the service/product
+- Requesting more information
+- Clarifying details without purchase commitment
+- General interest without clear buying signals
+
+NOT INTERESTED (purchaseIntent: false, intentType: "not_interested"):
+- Explicitly declines or says no
+- Not a good fit or timing
+- Already found another solution
+
 Return JSON:
 {
   "purchaseIntent": boolean,
+  "intentType": "ready_to_purchase" | "negotiating" | "inquiry" | "not_interested",
   "primaryConcern": "brief description",
-  "suggestedResponse": "professional response",
+  "suggestedResponse": "professional response appropriate for intent type",
   "confidence": 0.8
-}
-
-Purchase intent = ready to buy, asking about payment, confirming purchase, expressing commitment.`;
+}`;
 
   try {
     if (primaryModel) {
@@ -184,6 +243,7 @@ Purchase intent = ready to buy, asking about payment, confirming purchase, expre
     // Return default response
     return {
       purchaseIntent: false,
+      intentType: "inquiry",
       primaryConcern: "Unable to analyze - using fallback",
       suggestedResponse: `Thank you for your reply, ${leadData.director_first_name}. We've received your message and will review it shortly. Someone from our team will get back to you within 24 hours.`,
       confidence: 0
