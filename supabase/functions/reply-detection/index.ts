@@ -205,43 +205,119 @@ Return JSON:
 }
 
 async function callAIModel(prompt: string, model: any): Promise<any> {
-  if (model.provider === 'gemini' && geminiApiKey) {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.model_id}:generateContent?key=${geminiApiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
+  try {
+    if (model.provider === 'gemini' && geminiApiKey) {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.model_id}:generateContent?key=${geminiApiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 1000,
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        console.error(`Gemini API error: ${response.status} ${response.statusText}`);
+        throw new Error(`Gemini API request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Gemini API Response:', JSON.stringify(data, null, 2));
+
+      // Check if response structure is valid
+      if (!data || !data.candidates || !Array.isArray(data.candidates) || data.candidates.length === 0) {
+        console.error('Gemini: Missing/empty candidates array', JSON.stringify(data, null, 2));
+        throw new Error('Invalid Gemini response structure');
+      }
+
+      const candidate = data.candidates[0];
+      if (!candidate || !candidate.content || !candidate.content.parts || !Array.isArray(candidate.content.parts) || candidate.content.parts.length === 0) {
+        console.error('Gemini: Missing/empty candidate content', JSON.stringify(candidate, null, 2));
+        throw new Error('Invalid Gemini candidate structure');
+      }
+
+      const content = candidate.content.parts[0]?.text;
+      if (!content || content.trim() === '') {
+        console.error('Gemini: Empty content text', JSON.stringify(candidate, null, 2));
+        throw new Error('Empty Gemini response content');
+      }
+
+      // Clean and parse JSON
+      let cleanContent = content.trim();
+      // Remove markdown code blocks if present
+      cleanContent = cleanContent.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      
+      try {
+        return JSON.parse(cleanContent);
+      } catch (parseError) {
+        console.error('Gemini: JSON parse error', parseError, 'Content:', cleanContent);
+        throw new Error('Failed to parse Gemini JSON response');
+      }
+
+    } else if (model.provider === 'openai' && openaiApiKey) {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: model.model_id,
+          messages: [
+            { role: 'system', content: 'Analyze customer email replies and determine purchase intent. Respond with valid JSON only.' },
+            { role: 'user', content: prompt }
+          ],
           temperature: 0.3,
-          maxOutputTokens: 500,
-        }
-      }),
-    });
+          max_tokens: 1000,
+        }),
+      });
 
-    const data = await response.json();
-    const content = data.candidates[0]?.content?.parts[0]?.text;
-    return JSON.parse(content);
-  } else if (model.provider === 'openai' && openaiApiKey) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: model.model_id,
-        messages: [
-          { role: 'system', content: 'Analyze customer email replies and determine purchase intent. Respond with valid JSON only.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 500,
-      }),
-    });
+      if (!response.ok) {
+        console.error(`OpenAI API error: ${response.status} ${response.statusText}`);
+        throw new Error(`OpenAI API request failed: ${response.status}`);
+      }
 
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-    return JSON.parse(content);
+      const data = await response.json();
+      console.log('OpenAI API Response:', JSON.stringify(data, null, 2));
+
+      // Check if response structure is valid
+      if (!data || !data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+        console.error('OpenAI: Missing/empty choices array', JSON.stringify(data, null, 2));
+        throw new Error('Invalid OpenAI response structure');
+      }
+
+      const choice = data.choices[0];
+      if (!choice || !choice.message || !choice.message.content) {
+        console.error('OpenAI: Missing/empty choice content', JSON.stringify(choice, null, 2));
+        throw new Error('Invalid OpenAI choice structure');
+      }
+
+      const content = choice.message.content;
+      if (!content || content.trim() === '') {
+        console.error('OpenAI: Empty content text', JSON.stringify(choice, null, 2));
+        throw new Error('Empty OpenAI response content');
+      }
+
+      // Clean and parse JSON
+      let cleanContent = content.trim();
+      // Remove markdown code blocks if present
+      cleanContent = cleanContent.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      
+      try {
+        return JSON.parse(cleanContent);
+      } catch (parseError) {
+        console.error('OpenAI: JSON parse error', parseError, 'Content:', cleanContent);
+        throw new Error('Failed to parse OpenAI JSON response');
+      }
+    } else {
+      throw new Error('No valid AI provider configured or API key missing');
+    }
+  } catch (error) {
+    console.error('AI Model call failed:', error);
+    throw error;
   }
 }
 
