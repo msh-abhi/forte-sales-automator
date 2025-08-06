@@ -32,8 +32,10 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Sending ${type} email to ${to}`);
 
+    const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "CRM System <noreply@resend.dev>";
+    
     const emailResponse = await resend.emails.send({
-      from: "CRM System <noreply@resend.dev>",
+      from: fromEmail,
       to: [to],
       subject: subject,
       html: `
