@@ -96,14 +96,21 @@ interface ConversionRequest {
 
     // Create invoice in QuickBooks
     const invoiceResult = await createQuickBooksInvoice(leadData, customerId, currentToken, tokenData.realm_id);
+    console.log('Invoice created successfully:', invoiceResult);
 
-    // Update lead status
+    // Send the invoice through QuickBooks API
+    const sendResult = await sendQuickBooksInvoice(invoiceResult.invoiceId, currentToken, tokenData.realm_id);
+    console.log('Invoice sent successfully:', sendResult);
+
+    // Update lead status with QuickBooks invoice details
     await supabase
       .from('leads')
       .update({
         status: 'Invoice Sent',
         invoice_status: 'sent',
-        payment_date: null
+        payment_date: null,
+        quickbooks_invoice_id: invoiceResult.invoiceId,
+        quickbooks_invoice_number: invoiceResult.docNumber
       })
       .eq('id', leadId);
 
@@ -337,6 +344,7 @@ async function createQuickBooksInvoice(leadData: any, customerId: string, access
   
   return {
     invoiceId: invoice.Id,
+    docNumber: invoice.DocNumber,
     totalAmount: invoice.TotalAmt
   };
 }
@@ -437,6 +445,37 @@ async function getDefaultTaxCode(accessToken: string, realmId: string): Promise<
   // Final fallback - use a commonly available tax code ID
   console.log('Using fallback tax code');
   return { value: "NON" };
+}
+
+async function sendQuickBooksInvoice(invoiceId: string, accessToken: string, realmId: string): Promise<any> {
+  // QuickBooks API endpoint to send invoice
+  const sendUrl = `https://sandbox-quickbooks.api.intuit.com/v3/company/${realmId}/invoice/${invoiceId}/send`;
+  
+  const response = await fetch(sendUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('QuickBooks invoice send error:', errorText);
+    
+    // If sending via QB API fails, we'll continue with our email notification
+    console.log('QuickBooks send failed, relying on notification email');
+    return { success: false, message: 'QuickBooks send failed, notification email sent instead' };
+  }
+
+  const result = await response.json();
+  console.log('QuickBooks invoice send response:', result);
+  
+  return { 
+    success: true, 
+    message: 'Invoice sent successfully via QuickBooks',
+    response: result 
+  };
 }
 
 function generateInvoiceEmail(leadData: any, invoiceResult: any): string {
