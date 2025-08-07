@@ -283,6 +283,9 @@ async function createQuickBooksInvoice(leadData: any, customerId: string, access
   // First, get or create a service item
   const serviceItemId = await getOrCreateServiceItem(accessToken, realmId);
   
+  // Get the default tax code (NON for non-taxable in most regions)
+  const taxCodeRef = await getDefaultTaxCode(accessToken, realmId);
+  
   const invoiceData = {
     CustomerRef: {
       value: customerId
@@ -295,7 +298,8 @@ async function createQuickBooksInvoice(leadData: any, customerId: string, access
           value: serviceItemId
         },
         Qty: 1,
-        UnitPrice: amount
+        UnitPrice: amount,
+        TaxCodeRef: taxCodeRef
       },
       Description: `Music Education Equipment - ${leadData.workout_program_name || leadData.ensemble_program_name || 'Program'}`
     }],
@@ -391,6 +395,48 @@ async function getOrCreateServiceItem(accessToken: string, realmId: string): Pro
   
   // Ultimate fallback
   return "1";
+}
+
+async function getDefaultTaxCode(accessToken: string, realmId: string): Promise<any> {
+  // Try to find a non-taxable tax code first
+  const query = "SELECT * FROM TaxCode WHERE Name = 'NON' OR Name = 'Non-Taxable' OR Name = 'Out of scope'";
+  
+  const searchResponse = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${realmId}/query?query=${encodeURIComponent(query)}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (searchResponse.ok) {
+    const searchResult = await searchResponse.json();
+    if (searchResult.QueryResponse && searchResult.QueryResponse.TaxCode && searchResult.QueryResponse.TaxCode.length > 0) {
+      return { value: searchResult.QueryResponse.TaxCode[0].Id };
+    }
+  }
+
+  // If no specific tax code found, try to get any available tax code
+  const fallbackQuery = "SELECT * FROM TaxCode WHERE Active = true";
+  
+  const fallbackResponse = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${realmId}/query?query=${encodeURIComponent(fallbackQuery)}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (fallbackResponse.ok) {
+    const fallbackResult = await fallbackResponse.json();
+    if (fallbackResult.QueryResponse && fallbackResult.QueryResponse.TaxCode && fallbackResult.QueryResponse.TaxCode.length > 0) {
+      return { value: fallbackResult.QueryResponse.TaxCode[0].Id };
+    }
+  }
+
+  // Final fallback - use a commonly available tax code ID
+  console.log('Using fallback tax code');
+  return { value: "NON" };
 }
 
 function generateInvoiceEmail(leadData: any, invoiceResult: any): string {
