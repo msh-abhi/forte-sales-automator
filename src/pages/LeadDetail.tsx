@@ -35,6 +35,7 @@ interface Lead {
   quote_sent_date: string;
   payment_date: string;
   invoice_status: string;
+  quickbooks_customer_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -279,6 +280,56 @@ const LeadDetail = () => {
       toast({
         title: "Error",
         description: "Failed to resend communication. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleSendInvoice = async () => {
+    if (!lead) return;
+    
+    // Check if lead has QuickBooks customer ID
+    if (!lead.quickbooks_customer_id) {
+      toast({
+        title: "No Customer ID",
+        description: "This lead hasn't been converted to a QuickBooks customer yet. Use 'Manually Convert' first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!confirm('Are you sure you want to send an invoice to this customer?')) {
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      // Call QuickBooks conversion function to create and send invoice
+      const { data, error: conversionError } = await supabase.functions.invoke('quickbooks-conversion', {
+        body: { 
+          leadId: id,
+          leadData: lead
+        }
+      });
+
+      if (conversionError) throw conversionError;
+
+      setLead({ ...lead, status: 'Invoice Sent', invoice_status: 'sent' });
+      toast({
+        title: "Success",
+        description: "Invoice created and sent successfully!",
+      });
+      
+      // Refresh data
+      fetchLeadDetails();
+      fetchCommunications();
+    } catch (error) {
+      console.error('Error sending invoice:', error);
+      toast({
+        title: "Error",
+        description: "Failed to send invoice. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -553,6 +604,17 @@ const LeadDetail = () => {
                   <CreditCard className="h-4 w-4 mr-2" />
                   {updating ? 'Converting...' : 'Manually Convert'}
                 </Button>
+                {lead.quickbooks_customer_id && (
+                  <Button 
+                    className="w-full" 
+                    variant="secondary"
+                    onClick={handleSendInvoice}
+                    disabled={updating}
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    {updating ? 'Sending Invoice...' : 'Send Invoice'}
+                  </Button>
+                )}
                 <Button 
                   className="w-full" 
                   variant="outline"

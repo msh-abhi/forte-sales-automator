@@ -17,7 +17,7 @@ interface ConversionRequest {
   leadData: any;
 }
 
-const serve_handler = async (req: Request): Promise<Response> => {
+  const serve_handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -25,7 +25,7 @@ const serve_handler = async (req: Request): Promise<Response> => {
   try {
     const { leadId, leadData }: ConversionRequest = await req.json();
     
-    console.log('Converting lead to customer:', leadId);
+    console.log('Starting QuickBooks conversion for lead:', leadId);
 
     // Get QuickBooks tokens
     const { data: tokenData, error: tokenError } = await supabase
@@ -51,19 +51,51 @@ const serve_handler = async (req: Request): Promise<Response> => {
 
     let customerId = leadData.quickbooks_customer_id;
 
-    // Create or get customer in QuickBooks
+    // Create or get customer in QuickBooks if needed
     if (!customerId) {
-      customerId = await createQuickBooksCustomer(leadData, currentToken);
-      
-      // Update lead with QuickBooks customer ID
-      await supabase
-        .from('leads')
-        .update({ quickbooks_customer_id: customerId })
-        .eq('id', leadId);
+      try {
+        customerId = await createQuickBooksCustomer(leadData, currentToken, tokenData.realm_id);
+        console.log('Created new QuickBooks customer:', customerId);
+        
+        // Update lead with QuickBooks customer ID
+        const { error: updateError } = await supabase
+          .from('leads')
+          .update({ quickbooks_customer_id: customerId })
+          .eq('id', leadId);
+          
+        if (updateError) {
+          console.error('Failed to update lead with customer ID:', updateError);
+        } else {
+          console.log('Stored QuickBooks Customer ID in Supabase for lead:', leadId);
+        }
+      } catch (customerError: any) {
+        console.error('Customer creation failed. Attempting to search and update...', customerError);
+        
+        // If customer creation fails due to duplicate, try to find existing customer
+        if (customerError.message.includes('Duplicate Name')) {
+          try {
+            customerId = await findExistingCustomer(leadData, currentToken, tokenData.realm_id);
+            console.log('Found existing QuickBooks customer:', customerId);
+            
+            // Update lead with found customer ID
+            await supabase
+              .from('leads')
+              .update({ quickbooks_customer_id: customerId })
+              .eq('id', leadId);
+          } catch (searchError: any) {
+            console.error('Customer search also failed:', searchError);
+            throw new Error(`QuickBooks customer search failed: ${searchError.message}`);
+          }
+        } else {
+          throw customerError;
+        }
+      }
+    } else {
+      console.log('Using existing QuickBooks customer ID:', customerId);
     }
 
     // Create invoice in QuickBooks
-    const invoiceResult = await createQuickBooksInvoice(leadData, customerId, currentToken);
+    const invoiceResult = await createQuickBooksInvoice(leadData, customerId, currentToken, tokenData.realm_id);
 
     // Update lead status
     await supabase
@@ -87,15 +119,17 @@ const serve_handler = async (req: Request): Promise<Response> => {
       }
     });
 
-    // Send SMS notification
-    await supabase.functions.invoke('send-sms', {
-      body: {
-        to: leadData.director_phone_number,
-        message: `Great news! Your invoice has been sent. Check your email for details. Total: $${invoiceResult.totalAmount}`,
-        leadId: leadId,
-        type: 'invoice_sms'
-      }
-    });
+    // Send SMS notification if phone number exists
+    if (leadData.director_phone_number) {
+      await supabase.functions.invoke('send-sms', {
+        body: {
+          to: leadData.director_phone_number,
+          message: `Great news! Your invoice has been sent. Check your email for details. Total: $${invoiceResult.totalAmount}`,
+          leadId: leadId,
+          type: 'invoice_sms'
+        }
+      });
+    }
 
     return new Response(JSON.stringify({
       success: true,
@@ -171,25 +205,23 @@ async function refreshAccessToken(tokenData: any): Promise<string> {
   return newTokenData.access_token;
 }
 
-async function createQuickBooksCustomer(leadData: any, accessToken: string): Promise<string> {
-  const { data: tokenData } = await supabase
-    .from('quickbooks_tokens')
-    .select('realm_id')
-    .limit(1)
-    .single();
-
+async function createQuickBooksCustomer(leadData: any, accessToken: string, realmId: string): Promise<string> {
   const customerData = {
     Name: `${leadData.director_first_name} ${leadData.director_last_name}`,
     CompanyName: leadData.school_name || leadData.ensemble_program_name,
     PrimaryEmailAddr: {
       Address: leadData.director_email
-    },
-    PrimaryPhone: {
-      FreeFormNumber: leadData.director_phone_number
     }
   };
 
-  const response = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${tokenData.realm_id}/customer`, {
+  // Only add phone if it exists
+  if (leadData.director_phone_number) {
+    customerData.PrimaryPhone = {
+      FreeFormNumber: leadData.director_phone_number
+    };
+  }
+
+  const response = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${realmId}/customer`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -202,21 +234,54 @@ async function createQuickBooksCustomer(leadData: any, accessToken: string): Pro
   if (!response.ok) {
     const errorText = await response.text();
     console.error('QuickBooks customer creation error:', errorText);
-    throw new Error(`Failed to create QuickBooks customer: ${response.statusText}`);
+    throw new Error(`Failed to create QuickBooks customer: ${response.statusText}. Details: ${errorText}`);
   }
 
   const result = await response.json();
-  return result.QueryResponse.Customer[0].Id;
+  
+  // Handle both creation response and error response structures
+  if (result.QueryResponse && result.QueryResponse.Customer && result.QueryResponse.Customer[0]) {
+    return result.QueryResponse.Customer[0].Id;
+  } else if (result.Customer && result.Customer.Id) {
+    return result.Customer.Id;
+  } else {
+    console.error('QuickBooks create customer response was missing Customer.Id:', JSON.stringify(result, null, 2));
+    throw new Error('QuickBooks API returned an invalid response for customer creation.');
+  }
 }
 
-async function createQuickBooksInvoice(leadData: any, customerId: string, accessToken: string): Promise<any> {
-  const { data: tokenData } = await supabase
-    .from('quickbooks_tokens')
-    .select('realm_id')
-    .limit(1)
-    .single();
+async function findExistingCustomer(leadData: any, accessToken: string, realmId: string): Promise<string> {
+  const customerName = `${leadData.director_first_name} ${leadData.director_last_name}`;
+  const query = `SELECT * FROM Customer WHERE Name = '${customerName}'`;
+  
+  const response = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${realmId}/query?query=${encodeURIComponent(query)}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json'
+    }
+  });
 
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('QuickBooks customer search error:', errorText);
+    throw new Error(`QuickBooks customer search failed: ${response.statusText}`);
+  }
+
+  const result = await response.json();
+  
+  if (result.QueryResponse && result.QueryResponse.Customer && result.QueryResponse.Customer.length > 0) {
+    return result.QueryResponse.Customer[0].Id;
+  } else {
+    throw new Error('No existing customer found with matching name');
+  }
+}
+
+async function createQuickBooksInvoice(leadData: any, customerId: string, accessToken: string, realmId: string): Promise<any> {
   const amount = leadData.discount_rate_dr || leadData.standard_rate_sr || 500;
+  
+  // First, get or create a service item
+  const serviceItemId = await getOrCreateServiceItem(accessToken, realmId);
   
   const invoiceData = {
     CustomerRef: {
@@ -227,8 +292,7 @@ async function createQuickBooksInvoice(leadData: any, customerId: string, access
       DetailType: "SalesItemLineDetail",
       SalesItemLineDetail: {
         ItemRef: {
-          value: "1", // Default service item
-          name: "Services"
+          value: serviceItemId
         },
         Qty: 1,
         UnitPrice: amount
@@ -238,7 +302,7 @@ async function createQuickBooksInvoice(leadData: any, customerId: string, access
     TotalAmt: amount
   };
 
-  const response = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${tokenData.realm_id}/invoice`, {
+  const response = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${realmId}/invoice`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -251,16 +315,82 @@ async function createQuickBooksInvoice(leadData: any, customerId: string, access
   if (!response.ok) {
     const errorText = await response.text();
     console.error('QuickBooks invoice creation error:', errorText);
-    throw new Error(`Failed to create QuickBooks invoice: ${response.statusText}`);
+    throw new Error(`Failed to create QuickBooks invoice: ${response.statusText}. Details: ${errorText}`);
   }
 
   const result = await response.json();
-  const invoice = result.QueryResponse.Invoice[0];
+  
+  // Handle both creation response structures
+  let invoice;
+  if (result.QueryResponse && result.QueryResponse.Invoice && result.QueryResponse.Invoice[0]) {
+    invoice = result.QueryResponse.Invoice[0];
+  } else if (result.Invoice) {
+    invoice = result.Invoice;
+  } else {
+    console.error('QuickBooks invoice creation response:', JSON.stringify(result, null, 2));
+    throw new Error('QuickBooks API returned an invalid response for invoice creation.');
+  }
   
   return {
     invoiceId: invoice.Id,
     totalAmount: invoice.TotalAmt
   };
+}
+
+async function getOrCreateServiceItem(accessToken: string, realmId: string): Promise<string> {
+  // First, try to find an existing service item
+  const query = "SELECT * FROM Item WHERE Type = 'Service' AND Active = true";
+  
+  const searchResponse = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${realmId}/query?query=${encodeURIComponent(query)}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (searchResponse.ok) {
+    const searchResult = await searchResponse.json();
+    if (searchResult.QueryResponse && searchResult.QueryResponse.Item && searchResult.QueryResponse.Item.length > 0) {
+      return searchResult.QueryResponse.Item[0].Id;
+    }
+  }
+
+  // If no service item found, create one
+  const itemData = {
+    Name: "Music Education Services",
+    Type: "Service",
+    IncomeAccountRef: {
+      value: "1" // Default income account - this might need to be adjusted
+    }
+  };
+
+  const createResponse = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${realmId}/item`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(itemData)
+  });
+
+  if (!createResponse.ok) {
+    const errorText = await createResponse.text();
+    console.error('QuickBooks service item creation error:', errorText);
+    // Fall back to default service item ID that usually exists in sandbox
+    return "1";
+  }
+
+  const createResult = await createResponse.json();
+  if (createResult.QueryResponse && createResult.QueryResponse.Item && createResult.QueryResponse.Item[0]) {
+    return createResult.QueryResponse.Item[0].Id;
+  } else if (createResult.Item) {
+    return createResult.Item.Id;
+  }
+  
+  // Ultimate fallback
+  return "1";
 }
 
 function generateInvoiceEmail(leadData: any, invoiceResult: any): string {
