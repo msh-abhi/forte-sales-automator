@@ -99,7 +99,7 @@ interface ConversionRequest {
     console.log('Invoice created successfully:', invoiceResult);
 
     // Send the invoice through QuickBooks API
-    const sendResult = await sendQuickBooksInvoice(invoiceResult.invoiceId, currentToken, tokenData.realm_id);
+    const sendResult = await sendQuickBooksInvoice(invoiceResult.invoiceId, leadData.director_email, currentToken, tokenData.realm_id);
     console.log('Invoice sent successfully:', sendResult);
 
     // Update lead status with QuickBooks invoice details
@@ -110,7 +110,8 @@ interface ConversionRequest {
         invoice_status: 'sent',
         payment_date: null,
         quickbooks_invoice_id: invoiceResult.invoiceId,
-        quickbooks_invoice_number: invoiceResult.docNumber
+        quickbooks_invoice_number: invoiceResult.docNumber,
+        updated_at: new Date().toISOString()
       })
       .eq('id', leadId);
 
@@ -342,9 +343,35 @@ async function createQuickBooksInvoice(leadData: any, customerId: string, access
     throw new Error('QuickBooks API returned an invalid response for invoice creation.');
   }
   
+  // If docNumber is missing, fetch the complete invoice details
+  let docNumber = invoice.DocNumber;
+  if (!docNumber) {
+    console.log('DocNumber missing, fetching complete invoice details...');
+    try {
+      const fetchResponse = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${realmId}/invoice/${invoice.Id}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (fetchResponse.ok) {
+        const fetchResult = await fetchResponse.json();
+        if (fetchResult.QueryResponse && fetchResult.QueryResponse.Invoice && fetchResult.QueryResponse.Invoice[0]) {
+          docNumber = fetchResult.QueryResponse.Invoice[0].DocNumber;
+          console.log('Retrieved DocNumber from fetch:', docNumber);
+        }
+      }
+    } catch (fetchError) {
+      console.error('Error fetching complete invoice details:', fetchError);
+      // Continue without docNumber rather than failing
+    }
+  }
+
   return {
     invoiceId: invoice.Id,
-    docNumber: invoice.DocNumber,
+    docNumber: docNumber,
     totalAmount: invoice.TotalAmt
   };
 }
@@ -447,25 +474,47 @@ async function getDefaultTaxCode(accessToken: string, realmId: string): Promise<
   return { value: "NON" };
 }
 
-async function sendQuickBooksInvoice(invoiceId: string, accessToken: string, realmId: string): Promise<any> {
+async function sendQuickBooksInvoice(invoiceId: string, recipientEmail: string, accessToken: string, realmId: string): Promise<any> {
   // QuickBooks API endpoint to send invoice
   const sendUrl = `https://sandbox-quickbooks.api.intuit.com/v3/company/${realmId}/invoice/${invoiceId}/send`;
   
+  // Prepare the request body with recipient email
+  const sendData = {
+    sendTo: recipientEmail
+  };
+
   const response = await fetch(sendUrl, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
       'Accept': 'application/json'
-    }
+    },
+    body: JSON.stringify(sendData)
   });
 
   if (!response.ok) {
     const errorText = await response.text();
     console.error('QuickBooks invoice send error:', errorText);
     
-    // If sending via QB API fails, we'll continue with our email notification
-    console.log('QuickBooks send failed, relying on notification email');
-    return { success: false, message: 'QuickBooks send failed, notification email sent instead' };
+    // Parse the error to provide more specific feedback
+    try {
+      const errorData = JSON.parse(errorText);
+      const errorMessage = errorData.Fault?.Error?.[0]?.Message || 'Unknown QuickBooks error';
+      console.log(`QuickBooks send failed: ${errorMessage}, relying on notification email`);
+      return { 
+        success: false, 
+        message: `QuickBooks send failed: ${errorMessage}. Notification email sent instead.`,
+        error: errorMessage
+      };
+    } catch (parseError) {
+      console.log('QuickBooks send failed, relying on notification email');
+      return { 
+        success: false, 
+        message: 'QuickBooks send failed, notification email sent instead',
+        error: errorText
+      };
+    }
   }
 
   const result = await response.json();
@@ -473,7 +522,7 @@ async function sendQuickBooksInvoice(invoiceId: string, accessToken: string, rea
   
   return { 
     success: true, 
-    message: 'Invoice sent successfully via QuickBooks',
+    message: `Invoice sent successfully via QuickBooks to ${recipientEmail}`,
     response: result 
   };
 }
