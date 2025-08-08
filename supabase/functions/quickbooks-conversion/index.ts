@@ -214,18 +214,25 @@ async function refreshAccessToken(tokenData: any): Promise<string> {
 }
 
 async function createQuickBooksCustomer(leadData: any, accessToken: string, realmId: string): Promise<string> {
-  const customerData = {
-    Name: `${leadData.director_first_name} ${leadData.director_last_name}`,
-    CompanyName: leadData.school_name || leadData.ensemble_program_name,
+  const customerData: any = {
+    DisplayName: `${leadData.director_first_name} ${leadData.director_last_name}`,
+    GivenName: leadData.director_first_name,
+    FamilyName: leadData.director_last_name,
     PrimaryEmailAddr: {
       Address: leadData.director_email
     }
   };
 
+  // Only add CompanyName if it has a valid, non-empty value
+  const companyName = leadData.school_name || leadData.ensemble_program_name;
+  if (companyName && companyName.trim()) {
+    customerData.CompanyName = companyName.trim();
+  }
+
   // Only add phone if it exists
-  if (leadData.director_phone_number) {
+  if (leadData.director_phone_number && leadData.director_phone_number.trim()) {
     customerData.PrimaryPhone = {
-      FreeFormNumber: leadData.director_phone_number
+      FreeFormNumber: leadData.director_phone_number.trim()
     };
   }
 
